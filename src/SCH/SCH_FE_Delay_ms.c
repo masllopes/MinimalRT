@@ -1,4 +1,4 @@
-/*************************************************************************************
+/*****************************************************************************************
 * @file    SCH_FE_Delay_ms.c
 *
 * @brief   Provides the capability of performing a delay/busy wait, specified in milliseconds.
@@ -6,25 +6,24 @@
 *
 * @param   IN_delay_ms: The delay duration in milliseconds.
 * @return  void
-**************************************************************************************
+******************************************************************************************
 *  Version  | Date       | Author     | Description       
-**************************************************************************************
+******************************************************************************************
 *  1.0      | 24/06/2025 | M. Lopes   | Initial revision. 
-**************************************************************************************
+******************************************************************************************
 */
 
-/*-------------- Required interfaces --------------*/
+/*-------------------------------- Required interfaces ---------------------------------*/
 #include "SCH_VI.h"
 #include "SCH_TI.h"
 #include "COM_TE_Types.h"
 #include "SCH_CI_User_Config.h"
 #include "SCH_TI_Device.h"
 
-/* -------------- Provided interfaces  --------------*/
-
+/*-------------------------------- Provided interfaces ---------------------------------*/
 #include "SCH_FE_Delay_ms.h"
 
-/* -------------- Provided operations --------------*/
+/*-------------------------------- Provided operations ---------------------------------*/
 
 void SCH_FE_Delay_ms(t_uint64 IN_delay_ms)
 {
@@ -42,7 +41,7 @@ void SCH_FE_Delay_ms(t_uint64 IN_delay_ms)
         v_tick_diff = 0U;
 
         /* Calculate number of ticks corresponding to the desired delay*/
-        v_delay_ticks = (v_delay_us * 1000U) / SCH_AUX_CLK_TICK_NS;
+        v_delay_ticks = v_delay_us / SCH_AUX_CLK_TICK_US;
 
         /* Loop until the number of ticks corresponding to the delay have elapsed */
         while (v_tick_diff < v_delay_ticks)

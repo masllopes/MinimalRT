@@ -1,7 +1,7 @@
 #ifndef SCH_FI_TASK_MANAGER_H
 #define SCH_FI_TASK_MANAGER_H
 
-/**************************************************************************************** 
+/************************************************************************************************ 
 * @file  SCH_FI_Task_Manager.h
 *
 * @brief SCH_FI_Task_Manager is executed on the systick timer.
@@ -14,7 +14,7 @@
 * of the task by the end of its execution.
 *
 * To allow the detection of overruns, the branching to the tasks is handled by
-* PendSV (SCH_FI_Context_Switcher).
+* PendSV (SCH_FI_Context_Switch).
 *
 * This is done because otherwise, due to the lack of reentrant interrupts on
 * ARM Cortex-M, a new instance of the Systick timer interrupt cannot preempt a
@@ -28,16 +28,19 @@
 *
 * @param   None
 * @return  void
- *****************************************************************************************
- *  Version  |       Date        |     Author      |   Description
- *****************************************************************************************
- *     1.0   |    24/06/2025     |  M. Lopes       |    Initial revision.
- *****************************************************************************************
- */
+******************************************************************************************
+*  Version  |       Date        |     Author      |   Description
+******************************************************************************************
+*     1.0   |    24/06/2025     |  M. Lopes       |    Initial revision.
+******************************************************************************************
+*/
 
-/*---------------- Required interfaces --------------*/
+/*-------------------------------- Required interfaces ---------------------------------*/
 
-/* -------------- Provided operations prototypes --------------*/
+/*-------------------------------- Provided interfaces ---------------------------------*/
+#include "SCH_FI_Task_Manager.h"
+
+/*--------------------------- Provided operations prototypes ---------------------------*/
 
 void SCH_FI_Task_Manager(void);
 

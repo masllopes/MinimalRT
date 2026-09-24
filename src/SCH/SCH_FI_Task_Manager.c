@@ -1,30 +1,30 @@
-/**************************************************************************************** 
-* @file  SCH_FI_Task_Manager.h
-*
-* @brief SCH_FI_Task_Manager is executed on the systick timer.
-* It updates the state of each task, setting them to WAIT when the tasks have
-* to be executed.
-*
-* Additionally, it resets the stack pointer of each task
-* pointing it to the right place in the stack for the context switch into them,
-* since they don't return and therefore the SP will be pointing to the end
-* of the task by the end of its execution.
-*
-* To allow the detection of overruns, the branching to the tasks is handled by
-* PendSV (SCH_FI_Context_Switcher).
-*
-* This is done because otherwise, due to the lack of reentrant interrupts on
-* ARM Cortex-M, a new instance of the Systick timer interrupt cannot preempt a
-* previous ongoing call of the handler.
-*
-* Therefore, if a task was to get blocked, it would not be possible to detect
-* that with code on the systick handler. Also, if a task lasts longer than the
-* period of systick it would lead to that same kind of blocking behavior, event
-* if it's duration was within that task's period, and would prevent faster tasks
-* to preempt as intended.
-*
-* @param   None
-* @return  void
+/****************************************************************************************
+ * @file  SCH_FI_Task_Manager.h
+ *
+ * @brief SCH_FI_Task_Manager is executed on the systick timer.
+ * It updates the state of each task, setting them to WAIT when the tasks have
+ * to be executed.
+ *
+ * Additionally, it resets the stack pointer of each task
+ * pointing it to the right place in the stack for the context switch into them,
+ * since they don't return and therefore the SP will be pointing to the end
+ * of the task by the end of its execution.
+ *
+ * To allow the detection of overruns, the branching to the tasks is handled by
+ * PendSV (SCH_FI_Context_Switcher).
+ *
+ * This is done because otherwise, due to the lack of reentrant interrupts on
+ * ARM Cortex-M, a new instance of the Systick timer interrupt cannot preempt a
+ * previous ongoing call of the handler.
+ *
+ * Therefore, if a task was to get blocked, it would not be possible to detect
+ * that with code on the systick handler. Also, if a task lasts longer than the
+ * period of systick it would lead to that same kind of blocking behavior, event
+ * if it's duration was within that task's period, and would prevent faster tasks
+ * to preempt as intended.
+ *
+ * @param   None
+ * @return  void
  *****************************************************************************************
  *  Version  |       Date        |     Author      |   Description
  *****************************************************************************************
@@ -40,20 +40,45 @@
 #include "COM_FE_Disable_Interrupts.h"
 #include "COM_FE_Enable_Interrupts.h"
 #include "SCH_TI_Device.h"
+#include "SCH_TI_Configure.h"
 
 /* -------------- Provided interfaces  --------------*/
 
 #include "SCH_FI_Task_Manager.h"
 
 /* -------------- Provided operations --------------*/
-
 void SCH_FI_Task_Manager(void)
 {
-    /* Initialize task index */
-    t_uint32 v_task_id = 0U;
+    /* Disable interrupts to prevent any preemption of the task manager
+       by a higher priority interrupt, which could lead to an inconsistent state
+       of the scheduler data */
+    __disable_irq();
 
-    /* Disable interrupts to ensure data integrity */
-    COM_FE_Disable_Interrupts();
+#if SCH_PH_SHIFT_ENABLE
+    /* If a phase shift is ongoing, reset the reload value to the original one */
+    switch (V_SCH.phase_shift_state)
+    {
+    case PH_SHIFT_ADJ_CYCLE:
+
+        /* Reset the Systick reload value to the original one, which will kick-in in the next cycle */
+        SysTick->LOAD = SCH_QUANTA_TICKS;
+
+        /* The request was made before this Systick interrupt, so the adjustment cycle will follow */
+        V_SCH.phase_shift_state = PH_SHIFT_RESET;
+        break;
+
+    case PH_SHIFT_RESET:
+
+        /* Now that the Systick reload value returned to SCH_QUANTA_TICKS,
+        reset the phase shift state to allow processing further requests */
+        V_SCH.phase_shift_state = PH_SHIFT_REQ_AVAILABLE;
+        break;
+    default:
+        break;
+    }
+#endif /* SCH_PH_SHIFT_ENABLE */
+
+    t_uint32 v_task_id; /* Task ID variable used to iterate through the tasks */
 
     /* Increment scheduler quanta counter */
     V_SCH.quanta_ctr++;
@@ -70,7 +95,7 @@ void SCH_FI_Task_Manager(void)
     /* For every task except BG, starting from the fastest, i.e. highest prio one */
     for (v_task_id = 1U; v_task_id < SCH_TASK_NUMBER; v_task_id++)
     {
-        /*`* If it is time for the task to be scheduled */
+        /* If it is time for the task to be scheduled */
         if (V_SCH.quanta_ctr % V_SCH.tasks[v_task_id].period_quanta == 0U)
         {
             /* If the previous execution has finished */
@@ -80,10 +105,10 @@ void SCH_FI_Task_Manager(void)
                 V_SCH.tasks[v_task_id].state = TASK_STATE_WAIT;
 
                 /* Reset the stack pointer */
-                V_SCH.tasks[v_task_id].sp = &V_SCH_STACKS[v_task_id][SCH_TASK_STACK_SIZE - SCH_TASK_BASE_STACK_WORDS];
+                V_SCH.tasks[v_task_id].sp = V_SCH.tasks[v_task_id].stack_top_ptr;
 
                 /* Reset the program counter to the beginning of the task function */
-                V_SCH_STACKS[v_task_id][SCH_BASE_STACK_PC_INDEX] = (t_uint32)V_SCH.tasks[v_task_id].pt_function;
+                *(V_SCH.tasks[v_task_id].stack_pc_ptr) = (t_uint32)V_SCH.tasks[v_task_id].pt_function;
 
                 /* Add the task stack pointer address to the next position in the task queue */
                 V_SCH.task_sp_queue_pt++;
@@ -126,8 +151,8 @@ void SCH_FI_Task_Manager(void)
     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 
     /* Reenable interrupts to resume scheduling */
-    COM_FE_Enable_Interrupts();
-
+    __enable_irq();
+    // pin_reset(SCH_PROF_PA7);
     /* Exit to allow execution of PendSV */
     return;
 }

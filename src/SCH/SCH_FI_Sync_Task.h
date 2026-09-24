@@ -1,13 +1,11 @@
-#ifndef SCH_FI_START_SCHEDULING_H
-#define SCH_FI_START_SCHEDULING_H
+#ifndef SCH_FI_SYNC_TASK_H
+#define SCH_FI_SYNC_TASK_H
 
-/****************************************************************************************** 
-* @file  SCH_FI_Start_Scheduling.h
-* 
-* @brief Sets the CPU to use the PSP stack pointer instead of MSP, initializes the CPU 
-*        registers and branches to the background task and enables interrupts, to start
-*        the cyclic scheduling of tasks.
-*     
+/************************************************************************************************ 
+* @file  SCH_FI_Sync_Task.h
+*
+* @brief SCH_FI_Sync_Task
+*
 * @param   None
 * @return  void
 ******************************************************************************************
@@ -17,11 +15,13 @@
 ******************************************************************************************
 */
 
-
 /*-------------------------------- Required interfaces ---------------------------------*/
+
+/*-------------------------------- Provided interfaces ---------------------------------*/
+#include "SCH_FI_Sync_Task.h"
 
 /*--------------------------- Provided operations prototypes ---------------------------*/
 
-void SCH_FI_Start_Scheduling(void);
+extern void SCH_FI_Sync_Task(void);
 
-#endif /* SCH_FI_START_SCHEDULING_H */
+#endif /* SCH_FI_SYNC_TASK_H */

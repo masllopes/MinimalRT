@@ -1,4 +1,4 @@
-/*************************************************************************************
+/*****************************************************************************************
 * @file    SCH_FE_Init.c
 *
 * @brief   Initializes the scheduler.
@@ -6,16 +6,17 @@
 *
 * @param   None
 * @return  void
-**************************************************************************************
+******************************************************************************************
 *  Version  | Date       | Author     | Description       
-**************************************************************************************
-*  1.0      | 24/06/2025 | M. Lopes   | Initial revision. 
-**************************************************************************************
+******************************************************************************************
+*  1.0      | 20/07/2025 | M. Lopes   | Initial revision. 
+******************************************************************************************
 */
 
-/*-------------- Required interfaces --------------*/
+/*-------------------------------- Required interfaces ---------------------------------*/
 #include "COM_TE_Types.h"
 #include "SCH_TI_Device.h"
+#include "SCH_TI_Configure.h"
 #include "SCH_TI.h"
 #include "SCH_VI.h"
 #include "SCH_TI.h"
@@ -25,18 +26,18 @@
 #include "SCH_FI_Start_Scheduling.h"
 #include "SCH_FI_BG_Task.h"
 
-/* -------------- Provided interfaces  --------------*/
+/*-------------------------------- Provided interfaces ---------------------------------*/
 #include "SCH_FE_Init.h"
 
-/* -------------- Provided operations --------------*/
+/*-------------------------------- Provided operations ---------------------------------*/
 
 void SCH_FE_Init(void)
 {
-	/* Task iteration index */
-	t_uint32 v_task_id = 0U;
-
-	/* Stack iteration index */
-	t_uint32 v_stack_word = 0U;
+	
+	t_sch_stack_frame *v_stack_frame_ptr; /* Stack frame pointer */
+	t_uint32 v_task_id = 0U;              /* Task iteration index */
+	t_uint32 v_stack_word = 0U;           /* Stack iteration index */
+	t_uint32 v_align_idx_off = 0U;        /* Index offset for 8-byte alignment of the stack */
 
 
 	/*****************************************************************************/
@@ -44,20 +45,21 @@ void SCH_FE_Init(void)
 	/*****************************************************************************/
 
 	/* Disable interrupts before starting the schedule configuration */
-	COM_FE_Disable_Interrupts();
+	__disable_irq();
 
 	/*Program the value in the STRELOAD register to generate an interrupt every scheduler quanta*/
-	SysTick->LOAD = SCH_QUANTA_US * 1000U / SCH_SYSTICK_TICK_NS - 1U;
-
-	/*Clear the STCURRENT register by writing to it with any value*/
-	SysTick->VAL = 0x1234;
+	#if SCH_START_SYNC_ENABLE
+		SysTick->LOAD = SCH_QUANTA_TICKS_SYNC;
+	#else
+		SysTick->LOAD = SCH_QUANTA_TICKS;
+	#endif
 
 	/*Configure the STCTRL register, clock source is system clock enable systick */
 	SysTick->CTRL = STCTRL_EN | STRCTRL_CLK_SYSCLK;
 
 	/* Set Priority for Systick and PendSV Interrupts */
-    SCB->SHP[(((uint32_t)SysTick_IRQn) & 0xFUL)-4UL] = (uint8_t)(2UL << (8U - __NVIC_PRIO_BITS)) & (uint32_t)0xFFUL;
-    SCB->SHP[(((uint32_t)PendSV_IRQn) & 0xFUL)-4UL] = (uint8_t) (3UL << (8U - __NVIC_PRIO_BITS)) & (uint32_t)0xFFUL;
+    SCB->SHP[(((uint32_t)SysTick_IRQn) & 0xFUL)-4UL] = (uint8_t)(0UL << (8U - __NVIC_PRIO_BITS)) & (uint32_t)0xFFUL;
+    SCB->SHP[(((uint32_t)PendSV_IRQn) & 0xFUL)-4UL] = (uint8_t) (0UL << (8U - __NVIC_PRIO_BITS)) & (uint32_t)0xFFUL;
 	__DMB();
 	__ISB();
 
@@ -83,12 +85,9 @@ void SCH_FE_Init(void)
 			V_SCH_STACKS[v_task_id][v_stack_word] = 0xDEADBEEF;
 		}
 
-		/* Initialize Stack pointers */
-		V_SCH.tasks[v_task_id].sp = &(V_SCH_STACKS[v_task_id][SCH_TASK_STACK_SIZE]);
-
 		/* Initialize the configurable parameters of the thread control block with the values from the configuration table */
 		V_SCH.tasks[v_task_id].id = C_SCH_TASK_CONFIGS[v_task_id].id;
-		V_SCH.tasks[v_task_id].period_quanta = C_SCH_TASK_CONFIGS[v_task_id].period_quanta;
+		V_SCH.tasks[v_task_id].period_quanta = C_SCH_TASK_CONFIGS[v_task_id].period_us / SCH_QUANTA_US;
 		V_SCH.tasks[v_task_id].pt_function = C_SCH_TASK_CONFIGS[v_task_id].pt_function;
 
 		/* Initialize the number of finished executions */
@@ -105,87 +104,119 @@ void SCH_FE_Init(void)
 			V_SCH.tasks[v_task_id].state = TASK_STATE_FINISHED;
 		}
 
-		/* Initialize stack xPSR and PC, and the remainder with pattern for debugging
-	 leaving .sp pointing to the end of the first stack frame memory */
-		V_SCH.tasks[v_task_id].sp = &(V_SCH_STACKS[v_task_id][SCH_TASK_STACK_SIZE]);
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEA95C;																					  /* FPSCR */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB95C;																					  /* FPSCR */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB115;																					  /* S15 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB114;																					  /* S14 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB113;																					  /* S13 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB112;																					  /* S12 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB111;																					  /* S11 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB110;																					  /* S10 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB159;																					  /* S9 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB158;																					  /* S8 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB157;																					  /* S7 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB156;																					  /* S6 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB155;																					  /* S5 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB154;																					  /* S4 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB153;																					  /* S3 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB152;																					  /* S2 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB151;																					  /* S1 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB150;																					  /* S0 */
-		*(--V_SCH.tasks[v_task_id].sp) = (1u << 24);																					  /* Set xPSR bit 24: Operate in thumb mode*/
-		*(--V_SCH.tasks[v_task_id].sp) = (uint32_t)V_SCH.tasks[v_task_id].pt_function;													  /* Set PC to the address of the thread function, will be used to load LR */
-		*(--V_SCH.tasks[v_task_id].sp) = (uint32_t)V_SCH.tasks[v_task_id].pt_function; /* Set LR to the address of the thread function */ /* LR (R14) */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB112;																					  /* R12 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F3;																					  /* R3  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F2;																					  /* R2  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F1;																					  /* R1  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F0;																					  /* R0  */
+		/* The stack bottom and top have to be 8-byte aligned since lazy stacking is used,
+		save the top and PC addresses with the alignment, in order to reset the tasks later  */
+		v_align_idx_off  = ((t_uint32)&V_SCH_STACKS[v_task_id][SCH_TASK_STACK_SIZE] & 0x7U) != 0U;
+		V_SCH.tasks[v_task_id].stack_top_ptr = &V_SCH_STACKS[v_task_id][SCH_BASE_STACK_TOP_IDX_OFFSET-v_align_idx_off];
+		V_SCH.tasks[v_task_id].stack_pc_ptr = &V_SCH_STACKS[v_task_id][SCH_BASE_STACK_PC_IDX_OFFSET-v_align_idx_off];
 
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB111; /* R11 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB110; /* R10 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F9; /* R9  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F8; /* R8  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F7; /* R7  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F6; /* R6  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F5; /* R5  */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB1F4; /* R4  */
+		/* 	Point to the top of the stack of the task with 8-byte alignment.
+			From lowest to highest address it should contain the following:
+	      	- Caller (SW) saved registers: R4-R11, S16-S31
+		  	- Callee (HW) saved registers: R0-R13, R12, LR, PC, xPSR, S0-S15 FPSCR, one or two 8-byte alignment words
 
-		*(--V_SCH.tasks[v_task_id].sp) = 0xFFFFFFED; /* EXC_RETURN code for the task. FPU used, thread mode. Used to load LR during context switching. */
+		  */
 
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB531; /* S31 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB530; /* S30 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB529; /* S29 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB528; /* S28 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB527; /* S27 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB526; /* S26 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB525; /* S25 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB524; /* S24 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB523; /* S23 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB522; /* S22 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB521; /* S21 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB520; /* S20 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB519; /* S19 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB518; /* S18 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB517; /* S17 */
-		*(--V_SCH.tasks[v_task_id].sp) = 0xCAFEB516; /* S16 */
+		  V_SCH.tasks[v_task_id].sp = V_SCH.tasks[v_task_id].stack_top_ptr;        
+
+        /* Fill the task stack frame fields with a pattern for analysis and debugging */
+		v_stack_frame_ptr = (t_sch_stack_frame *)V_SCH.tasks[v_task_id].stack_top_ptr;
+
+        v_stack_frame_ptr->R4  = 0xCAFEB1F4;
+        v_stack_frame_ptr->R5  = 0xCAFEB1F5;
+        v_stack_frame_ptr->R6  = 0xCAFEB1F6;
+        v_stack_frame_ptr->R7  = 0xCAFEB1F7;
+        v_stack_frame_ptr->R8  = 0xCAFEB1F8;
+        v_stack_frame_ptr->R9  = 0xCAFEB1F9;
+        v_stack_frame_ptr->R10 = 0xCAFEB110;
+        v_stack_frame_ptr->R11 = 0xCAFEB111;
+
+        v_stack_frame_ptr->S16 = 0xCAFEB516;
+        v_stack_frame_ptr->S17 = 0xCAFEB517;
+        v_stack_frame_ptr->S18 = 0xCAFEB518;
+        v_stack_frame_ptr->S19 = 0xCAFEB519;
+        v_stack_frame_ptr->S20 = 0xCAFEB520;
+        v_stack_frame_ptr->S21 = 0xCAFEB521;
+        v_stack_frame_ptr->S22 = 0xCAFEB522;
+        v_stack_frame_ptr->S23 = 0xCAFEB523;
+        v_stack_frame_ptr->S24 = 0xCAFEB524;
+        v_stack_frame_ptr->S25 = 0xCAFEB525;
+        v_stack_frame_ptr->S26 = 0xCAFEB526;
+        v_stack_frame_ptr->S27 = 0xCAFEB527;
+        v_stack_frame_ptr->S28 = 0xCAFEB528;
+        v_stack_frame_ptr->S29 = 0xCAFEB529;
+        v_stack_frame_ptr->S30 = 0xCAFEB530;
+        v_stack_frame_ptr->S31 = 0xCAFEB531;
+
+        v_stack_frame_ptr->R0  = 0xCAFEB1F0;
+        v_stack_frame_ptr->R1  = 0xCAFEB1F1;
+        v_stack_frame_ptr->R2  = 0xCAFEB1F2;
+        v_stack_frame_ptr->R3  = 0xCAFEB1F3;
+        v_stack_frame_ptr->R12 = 0xCAFEB112;
+        v_stack_frame_ptr->LR  = (uint32_t)V_SCH.tasks[v_task_id].pt_function;
+        v_stack_frame_ptr->PC  = (uint32_t)V_SCH.tasks[v_task_id].pt_function;
+        v_stack_frame_ptr->xPSR = (1u << 24);
+
+        v_stack_frame_ptr->S0  = 0xCAFEB150;
+        v_stack_frame_ptr->S1  = 0xCAFEB151;
+        v_stack_frame_ptr->S2  = 0xCAFEB152;
+        v_stack_frame_ptr->S3  = 0xCAFEB153;
+        v_stack_frame_ptr->S4  = 0xCAFEB154;
+        v_stack_frame_ptr->S5  = 0xCAFEB155;
+        v_stack_frame_ptr->S6  = 0xCAFEB156;
+        v_stack_frame_ptr->S7  = 0xCAFEB157;
+        v_stack_frame_ptr->S8  = 0xCAFEB158;
+        v_stack_frame_ptr->S9  = 0xCAFEB159;
+        v_stack_frame_ptr->S10 = 0xCAFEB110;
+        v_stack_frame_ptr->S11 = 0xCAFEB111;
+        v_stack_frame_ptr->S12 = 0xCAFEB112;
+        v_stack_frame_ptr->S13 = 0xCAFEB113;
+        v_stack_frame_ptr->S14 = 0xCAFEB114;
+        v_stack_frame_ptr->S15 = 0xCAFEB115;
+        v_stack_frame_ptr->FPSCR = 0x0;
+		
 	}
-
 
 	/*****************************************************************************/
 	/*                           Start of scheduling                             */
 	/*****************************************************************************/
 
 	/* Initialize the task queue pointer to the beginning of the queue */
-	V_SCH.task_sp_queue_pt = &V_SCH.task_sp_queue[0U];
+	V_SCH.task_sp_queue_pt = &V_SCH.task_sp_queue[0];
 
 	/* Initialize the scheduler task queue with the background task since
-		it will be the first one to be executed before the first Systick interrupt */
-	V_SCH.task_sp_queue[0U] = &V_SCH.tasks[BG_TASK].sp;
+	it will be the first one to be executed before the first Systick interrupt */
+	
+	/* If sync start is enabled */
+	#if SCH_START_SYNC_ENABLE
+		/* Set the queue so that the sync task is executed, waiting for the sync event detection,
+		setting time zero and then jumping to the first cyclic task */
+		V_SCH.task_sp_queue[0U] = &V_SCH.tasks[1].sp;
+		V_SCH.task_sp_queue[1U] = &V_SCH.tasks[0].sp;
 
+	#else
+		/* Otherwise, set the queue so that the background task is the first one being executed
+		until one quanta has elapsed and the task manager starts managing the queue */
+		V_SCH.task_sp_queue[0U] = &V_SCH.tasks[BG_TASK].sp;
+	#endif
+	
 	/*Initialize scheduler status data structure*/
 	V_SCH.quanta_ctr = 0U;
 
-	/*Clear the STCURRENT register by writing to it with any value*/
-	SysTick->VAL = 0x1234;
+	/* If sync start is not enable, reset the systick counter and enable the interrupts */
+	#if !SCH_START_SYNC_ENABLE
+		/*Clear the STCURRENT register by writing to it with any value*/
+		SysTick->VAL = 0x1234;
 
-	/* Enable the systick interrupts */
-	SysTick->CTRL |= STRCTRL_INT_EN;
+		/* Enable the systick interrupts */
+		SysTick->CTRL |= STRCTRL_INT_EN;
+	#endif
 
-	/* Enter cyclic scheduling */
+	/* Enter cyclic scheduling, by manually setting up the registers to the 
+	context of the first task to be executed */
 	V_SCH.operation_mode = OP_MODE_CYCLIC;
 	SCH_FI_Start_Scheduling();
+
+	/* This point should never be reached */
+	while(1);
 }
