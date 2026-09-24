@@ -1,7 +1,7 @@
 /****************************************************************************************
  * @file  SCH_FI_Sync_Task.c
  *
- * @brief SCH_FI_Sync_Task is
+ * @brief Provides a place holder for the synchronization event task.
  * @param   None
  * @return  void
  *****************************************************************************************
@@ -12,14 +12,10 @@
  */
 
 /*-------------- Required interfaces --------------*/
-
 #include "SCH_TI_Device.h"
 #include "SCH_CI_User_Config.h"
 #include "SCH_TI.h"
 
-// #include "SCH_FE_Delay_Us.h"
-#include "COM_FE_Enable_IRQ.h"
-#include "COM_FE_Disable_IRQ.h"
 
 /* -------------- Provided interfaces  --------------*/
 #include "SCH_FI_Sync_Task.h"
@@ -30,13 +26,6 @@ static inline void SCH_FL_Sync_Task_Prologue(void);
 /* -------------- Provided operations --------------*/
 void SCH_FI_Sync_Task(void)
 {
-
-    // Wait for the sync event to be detected */
-    //  SCH_FE_Delay_Us(50U); // Simulate some sync process time
-
-    // COM_FE_Enable_IRQ(EXTI15_10_IRQn);
-
-    COM_FE_Disable_IRQ(EXTI15_10_IRQn);
 
     /* Perform the sync prologue, handling systick and jumping to the first cyclic task*/
     SCH_FL_Sync_Task_Prologue();

@@ -27,18 +27,10 @@
 void SCH_FI_BG_Task(void)
 {
 
-    int dummy = 0;
-    int i;
     while (1)
     {
-        pin_set(SCH_PROF_PB0);
         
-        for(i = 0; i < 10; i++) 
-        {
-                dummy++;
-        }
+        
 
-        V_SCH.tasks[BG_TASK].execution_nb++;
-        pin_reset(SCH_PROF_PB0);
     }
 }
